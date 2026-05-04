@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Clock, MessageSquare, Search, FlaskConical, RefreshCw, CheckCircle } from 'lucide-react';
-import axios from 'axios';
+import API from '../api';
 
 export default function HistoryPage() {
   const [history, setHistory] = useState([]);
@@ -13,8 +13,8 @@ export default function HistoryPage() {
   const fetchData = async () => {
     try {
       const [h, a] = await Promise.all([
-        axios.get('/api/history'),
-        axios.get('/api/annotations'),
+        API.get('/api/history'),
+        API.get('/api/annotations'),
       ]);
       setHistory(h.data.history);
       setAnnotations(a.data.annotations);
@@ -37,7 +37,7 @@ export default function HistoryPage() {
     if (!form.author || !form.observation) return;
     setSubmitting(true);
     try {
-      await axios.post('/api/annotate', form);
+      await API.post('/api/annotate', form);
       setSuccess('Annotation added successfully.');
       setForm({ author: '', observation: '', follow_up: '', experiment_id: 'general' });
       await fetchData();

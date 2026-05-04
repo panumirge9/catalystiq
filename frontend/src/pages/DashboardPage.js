@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import API from '../api';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, BarChart, Bar, Cell
@@ -107,7 +107,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState({ discoveries: 0, feedback: 0, annotations: 0 });
 
   useEffect(() => {
-    axios.get('/api/health').then(r => {
+    API.get('/api/health').then(r => {
       setStats({
         discoveries: r.data.history_count || 0,
         feedback: r.data.feedback_count || 0,

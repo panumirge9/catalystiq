@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CheckCircle, PlusCircle } from 'lucide-react';
-import axios from 'axios';
+import API from '../api';
 
 export default function FeedbackPage({ results, onDone }) {
   const [entries, setEntries] = useState([emptyEntry()]);
@@ -32,7 +32,7 @@ export default function FeedbackPage({ results, onDone }) {
     for (const e of entries) {
       if (!e.candidate_id || !e.measured_activity) continue;
       try {
-        const res = await axios.post('/api/feedback', {
+        const res = await API.post('/api/feedback', {
           candidate_id: e.candidate_id,
           candidate_name: e.candidate_name,
           predicted_activity: parseFloat(e.predicted_activity),

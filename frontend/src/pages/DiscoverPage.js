@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Search, Zap, FlaskConical, Thermometer, Gauge, SlidersHorizontal } from 'lucide-react';
-import axios from 'axios';
+import API from '../api';
 
 const PRESETS = [
   { label: 'Ethanol → Jet Fuel', reaction: 'ethanol → petroleum-grade hydrocarbons (Ethanol-to-Jet)', temp: '300-450°C', pressure: '10-50 bar' },
@@ -21,7 +21,7 @@ export default function DiscoverPage({ onResults }) {
     setError('');
     setLoading(true);
     try {
-      const res = await axios.post('/api/discover', form);
+      const res = await API.post('/api/discover', form);
       onResults(res.data);
     } catch (e) {
       setError(e.response?.data?.detail || 'Discovery failed. Is the backend running?');

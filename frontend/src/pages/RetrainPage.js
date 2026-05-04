@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCw, AlertTriangle, TrendingUp, CheckCircle } from 'lucide-react';
-import axios from 'axios';
+import API from '../api';
 
 export default function RetrainPage() {
   const [feedback, setFeedback] = useState([]);
@@ -10,7 +10,7 @@ export default function RetrainPage() {
   const [fetchError, setFetchError] = useState('');
 
   useEffect(() => {
-    axios.get('/api/feedback')
+    API.get('/api/feedback')
       .then(r => setFeedback(r.data.feedback))
       .catch(() => setFetchError('Could not fetch feedback. Log experiments first.'));
   }, []);
@@ -22,7 +22,7 @@ export default function RetrainPage() {
   const runRetrain = async () => {
     setLoading(true);
     try {
-      const res = await axios.post('/api/retrain', { feedback_ids: selected });
+      const res = await API.post('/api/retrain', { feedback_ids: selected });
       setAnalysis(res.data);
     } catch (e) {
       console.error(e);
