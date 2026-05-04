@@ -4,7 +4,7 @@
   "description": "AI-powered catalyst discovery platform for GPS Renewables ETJ programme",
   "private": true,
   "author": "Pranav Mirage",
-  "homepage": "https://github.com/panumirge9/catalystiq",
+  "homepage": "/",
   "dependencies": {
     "axios": "^1.7.2",
     "lucide-react": "^0.383.0",
