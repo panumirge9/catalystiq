@@ -175,9 +175,9 @@ export default function ResultsPage({ results, onFeedback, onNewSearch }) {
 
             {selected && (
               <div className="panel">
-                <div className="panel-header"><span className="panel-label">Molecular Structure — {selected.name}</span></div>
+                <div className="panel-header"><span className="panel-label">Catalyst Identity — {selected.name}</span></div>
                 <div style={{ padding: '0 18px 14px' }}>
-                  <MolViewer formula={selected.formula} name={selected.name} />
+                  <CatalystIdentityPanel formula={selected.formula} name={selected.name} type={selected.type} />
                 </div>
               </div>
             )}
@@ -217,19 +217,43 @@ export default function ResultsPage({ results, onFeedback, onNewSearch }) {
   );
 }
 
-function MolViewer({ formula, name }) {
+// CatalystIdentityPanel — replaces the old MolViewer.
+// Catalysts in our database (HZSM-5, Pd/Beta, Cu-Co/ZnO, etc.) are heterogeneous
+// supported metals and zeolite frameworks. They don't have a single small-molecule
+// SMILES. Showing benzene SMILES for HZSM-5 is misleading. So:
+//   - For substrates / small molecules (methanol, ethanol, CO2): render real 3D via PubChem
+//   - For catalysts (everything else): show the formula card with mechanism context
+// This is honest and matches the deck's "Catalyst identity panel" framing.
+function CatalystIdentityPanel({ formula, name, type }) {
   const ref = useRef();
+
   useEffect(() => {
     if (!ref.current) return;
     ref.current.innerHTML = '';
-    const SMILES_MAP = {
-      'hzsm': 'c1ccc2ccccc2c1', 'zeolite': 'c1ccc2ccccc2c1',
-      'pd': 'c1ccc(cc1)C(=O)O', 'cu': 'OC(=O)c1ccccc1',
-      'ni': 'C1CCCCC1', 'fe': 'O=C=O', 'co2': 'O=C=O',
-      'methanol': 'CO', 'ethanol': 'CCO',
+
+    // Only render 3D for small molecules we can confidently represent
+    const SMALL_MOLECULE_SMILES = {
+      'methanol': 'CO',
+      'ethanol': 'CCO',
+      'co2': 'O=C=O',
     };
-    const key = Object.keys(SMILES_MAP).find(k => name.toLowerCase().includes(k));
-    const smiles = key ? SMILES_MAP[key] : 'CCO';
+
+    const lowerName = name.toLowerCase();
+    const matchKey = Object.keys(SMALL_MOLECULE_SMILES).find(k => lowerName.includes(k));
+
+    // For catalysts (which is everything in our results), show identity card instead of fake 3D
+    if (!matchKey) {
+      ref.current.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:center;height:180px;flex-direction:column;gap:6px;background:#F5F3EC;border-radius:5px;padding:12px;text-align:center;">
+          <div style="font-family:var(--mono);font-size:18px;color:var(--accent);font-weight:500;">${formula}</div>
+          <div style="font-size:11px;color:var(--muted);max-width:80%;">Heterogeneous catalyst — supported metal / zeolite framework</div>
+          <div style="font-size:10px;color:var(--faint);font-family:var(--mono);margin-top:4px;">${type === 'Novel' ? 'AI-designed structure' : 'Crystal structure rendering: Phase 2'}</div>
+        </div>`;
+      return;
+    }
+
+    const smiles = SMALL_MOLECULE_SMILES[matchKey];
+
     const loadViewer = () => {
       if (!window.$3Dmol || !ref.current) return;
       ref.current.innerHTML = '';
@@ -243,7 +267,9 @@ function MolViewer({ formula, name }) {
           if (!sdf.includes('V2000') && !sdf.includes('V3000')) throw new Error('no sdf');
           viewer.addModel(sdf, 'sdf');
           viewer.setStyle({}, { stick: { radius: 0.15, colorscheme: 'Jmol' }, sphere: { scale: 0.25, colorscheme: 'Jmol' } });
-          viewer.zoomTo(); viewer.render(); viewer.spin('y', 0.5);
+          viewer.zoomTo();
+          viewer.render();
+          viewer.spin('y', 0.5);
         })
         .catch(() => {
           if (!ref.current) return;
@@ -252,6 +278,7 @@ function MolViewer({ formula, name }) {
             <div style="font-size:11px;color:var(--faint)">Chemical formula</div></div>`;
         });
     };
+
     if (window.$3Dmol) { loadViewer(); }
     else {
       const s = document.createElement('script');
@@ -259,7 +286,9 @@ function MolViewer({ formula, name }) {
       s.onload = loadViewer;
       document.head.appendChild(s);
     }
+
     return () => { if (ref.current) ref.current.innerHTML = ''; };
-  }, [formula, name]);
+  }, [formula, name, type]);
+
   return <div ref={ref} style={{ width: '100%', height: 180, borderRadius: 5, overflow: 'hidden', background: '#F5F3EC', isolation: 'isolate', marginTop: 14 }} />;
 }

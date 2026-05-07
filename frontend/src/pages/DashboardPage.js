@@ -10,7 +10,7 @@ const KPI_DATA = [
     label: 'Screening Time',
     before: '3–6 months',
     after: '2–4 days',
-    improvement: '98% faster',
+    improvement: '~98% faster (projected)',
     color: 'var(--accent)',
     icon: '⏱',
   },
@@ -18,7 +18,7 @@ const KPI_DATA = [
     label: 'Cost per Candidate',
     before: '₹2.4 lakh',
     after: '₹8,200',
-    improvement: '97% cheaper',
+    improvement: 'Projected reduction',
     color: 'var(--green)',
     icon: '💰',
   },
@@ -195,11 +195,11 @@ export default function DashboardPage() {
           
           <div className="panel">
             <div className="panel-header">
-              <span className="panel-label">Model Accuracy — Improving with Every Experiment</span>
+              <span className="panel-label">Model Accuracy — Projected Improvement Curve</span>
             </div>
             <div style={{ padding: '16px 18px' }}>
               <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12, lineHeight: 1.5 }}>
-                Each time researchers log experimental results, the model gets smarter. Starting at 62% baseline accuracy, reaching 86% after 5 experimental feedback cycles.
+                Projected accuracy curve based on typical AI catalyst-discovery feedback loops. Starting at 62% baseline, projected to reach 86% after 5 experimental cycles. Live accuracy is computed on the Retrain page from logged experiments.
               </div>
               <ResponsiveContainer width="100%" height={180}>
                 <LineChart data={ACCURACY_DATA}>
@@ -209,7 +209,7 @@ export default function DashboardPage() {
                     tickFormatter={v => v + '%'} />
                   <Tooltip
                     contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', fontSize: 12, borderRadius: 5 }}
-                    formatter={v => [v + '%', 'Accuracy']}
+                    formatter={v => [v + '%', 'Projected Accuracy']}
                   />
                   <Line type="monotone" dataKey="accuracy" stroke="var(--accent)"
                     strokeWidth={2} dot={{ fill: 'var(--accent)', r: 4 }} />
