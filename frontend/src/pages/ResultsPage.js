@@ -226,15 +226,14 @@ export default function ResultsPage({ results, onFeedback, onNewSearch }) {
   );
 }
 
-
 function CatalystIdentityPanel({ formula, name, type, substrate }) {
   const meta = analyseCatalyst(name, formula);
 
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: '1fr 1fr',
-      gap: 14,
+      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+      gap: 12,
       alignItems: 'stretch'
     }}>
       
@@ -244,7 +243,8 @@ function CatalystIdentityPanel({ formula, name, type, substrate }) {
         border: '1px solid var(--border)',
         overflow: 'hidden',
         display: 'flex',
-        flexDirection: 'column'
+        flexDirection: 'column',
+        minWidth: 0
       }}>
         <div style={{
           padding: '8px 12px',
@@ -269,14 +269,14 @@ function CatalystIdentityPanel({ formula, name, type, substrate }) {
         </div>
       </div>
 
-      
       <div style={{
         background: '#FDFCF8',
         borderRadius: 6,
         border: '1px solid var(--border)',
         overflow: 'hidden',
         display: 'flex',
-        flexDirection: 'column'
+        flexDirection: 'column',
+        minWidth: 0  
       }}>
         <div style={{
           padding: '8px 12px',
@@ -288,9 +288,16 @@ function CatalystIdentityPanel({ formula, name, type, substrate }) {
           background: '#F5F3EC',
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center'
+          alignItems: 'center',
+          gap: 6,
+          minWidth: 0
         }}>
-          <span>CATALYST · {meta.classLabel.toUpperCase()}</span>
+          <span style={{
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            minWidth: 0
+          }}>CATALYST · {meta.classLabel.toUpperCase()}</span>
           {type === 'Novel' && (
             <span style={{
               fontSize: 8,
@@ -299,13 +306,20 @@ function CatalystIdentityPanel({ formula, name, type, substrate }) {
               color: 'var(--green, #166534)',
               border: '0.5px solid var(--green-border, #BBF7D0)',
               borderRadius: 2,
-              letterSpacing: '0.5px'
+              letterSpacing: '0.5px',
+              flexShrink: 0
             }}>AI NOVEL</span>
           )}
         </div>
 
-        
-        <div style={{ padding: '10px 12px 4px', display: 'flex', justifyContent: 'center' }}>
+      
+        <div style={{
+          padding: '10px 12px 4px',
+          display: 'flex',
+          justifyContent: 'center',
+          minWidth: 0,
+          width: '100%'
+        }}>
           <ActiveSiteSchematic meta={meta} />
         </div>
 
@@ -313,10 +327,13 @@ function CatalystIdentityPanel({ formula, name, type, substrate }) {
         <div style={{
           padding: '6px 12px 4px',
           fontFamily: 'var(--mono)',
-          fontSize: 13,
+          fontSize: 12,
           color: 'var(--text)',
           fontWeight: 500,
-          textAlign: 'center'
+          textAlign: 'center',
+          wordBreak: 'break-word',
+          overflowWrap: 'anywhere',
+          lineHeight: 1.35
         }}>
           {formula}
         </div>
@@ -359,18 +376,26 @@ function CatalystIdentityPanel({ formula, name, type, substrate }) {
 
 function Row({ label, value, color }) {
   return (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+    <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', minWidth: 0 }}>
       <span style={{
         fontFamily: 'var(--mono)',
         fontSize: 9,
         color: 'var(--faint)',
         letterSpacing: '1px',
-        minWidth: 78,
+        minWidth: 70,
         flexShrink: 0
       }}>
         {label.toUpperCase()}
       </span>
-      <span style={{ fontSize: 11, color, lineHeight: 1.4 }}>
+      <span style={{
+        fontSize: 11,
+        color,
+        lineHeight: 1.4,
+        wordBreak: 'break-word',
+        overflowWrap: 'anywhere',
+        minWidth: 0,
+        flex: 1
+      }}>
         {value}
       </span>
     </div>
@@ -391,7 +416,6 @@ function detectSubstrate(reactionText) {
   if (t.includes('biomass') || t.includes('cellulose') || t.includes('glucose')) {
     return { key: 'glucose', label: 'Glucose', formula: 'C₆H₁₂O₆', smiles: 'OCC1OC(O)C(O)C(O)C1O' };
   }
-
   return { key: 'ethanol', label: 'Ethanol', formula: 'C₂H₅OH', smiles: 'CCO' };
 }
 
@@ -543,7 +567,6 @@ function analyseCatalyst(name, formula) {
     };
   }
 
-
   if (n.includes('fe-k') || n.includes('fischer') || n.includes('fe/k')) {
     return {
       classLabel: 'Fischer-Tropsch',
@@ -591,7 +614,6 @@ function analyseCatalyst(name, formula) {
     };
   }
 
- 
   const metalMatch = formula.match(/^([A-Z][a-z]?)(?:\(|\d|$)/);
   if (metalMatch) {
     return {
@@ -613,7 +635,6 @@ function analyseCatalyst(name, formula) {
 }
 
 function extractDopants(name) {
-  
   const match = name.match(/([A-Z][a-z]?)[-/ ]([A-Z][a-z]?)/);
   if (match) return `${match[1]}–${match[2]} dopants`;
   return null;
@@ -633,9 +654,10 @@ function ActiveSiteSchematic({ meta }) {
   const W = 200, H = 110;
   const common = {
     width: '100%',
-    height: 110,
+    height: 'auto',
     viewBox: `0 0 ${W} ${H}`,
-    style: { maxWidth: 220 }
+    preserveAspectRatio: 'xMidYMid meet',
+    style: { maxWidth: 200, maxHeight: 110, display: 'block' }
   };
 
   switch (meta.schematic) {
@@ -654,7 +676,7 @@ function ActiveSiteSchematic({ meta }) {
           <circle cx={W / 2} cy={H / 2} r="14" fill="#1E5FAD" opacity="0.15" />
           <circle cx={W / 2} cy={H / 2} r="6" fill="#1E5FAD" />
           <text x={W / 2} y={H / 2 + 3} fontSize="8" fill="#FDFCF8" textAnchor="middle" fontFamily="monospace" fontWeight="600">H⁺</text>
-          {/* Pore label */}
+          
           <text x={W / 2} y={H - 14} fontSize="8" fill="#6b7280" textAnchor="middle" fontFamily="monospace">10-MR pore</text>
         </svg>
       );
@@ -682,14 +704,14 @@ function ActiveSiteSchematic({ meta }) {
     case 'supportedMetal':
       return (
         <svg {...common} xmlns="http://www.w3.org/2000/svg">
-          
+        
           <rect x="10" y={H - 30} width={W - 20} height="20" fill="#9ca3af" opacity="0.25" rx="2" />
           <rect x="10" y={H - 30} width={W - 20} height="20" fill="none" stroke="#9ca3af" strokeWidth="0.8" rx="2" />
-          
+          {/* Lattice dots on support */}
           {Array.from({ length: 9 }).map((_, i) => (
             <circle key={i} cx={20 + i * 20} cy={H - 20} r="1.5" fill="#6b7280" opacity="0.6" />
           ))}
-          
+      
           <ellipse cx="55" cy={H - 30} rx="14" ry="14" fill="#1E5FAD" opacity="0.85" />
           <ellipse cx="55" cy={H - 30} rx="6" ry="3" fill="#FDFCF8" opacity="0.3" />
           <ellipse cx="110" cy={H - 30} rx="18" ry="18" fill="#1E5FAD" opacity="0.85" />
@@ -717,6 +739,7 @@ function ActiveSiteSchematic({ meta }) {
     case 'oxideSurface':
       return (
         <svg {...common} xmlns="http://www.w3.org/2000/svg">
+        
           {[0, 1, 2, 3].map(row =>
             [0, 1, 2, 3, 4, 5, 6, 7].map(col => {
               const cx = 20 + col * 22;
