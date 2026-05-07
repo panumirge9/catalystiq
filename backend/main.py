@@ -38,8 +38,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Graceful boot: don't crash if GROQ_API_KEY is missing.
-# Server still starts; AI endpoints return a clean 503 until configured.
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 if not GROQ_API_KEY:
     print("WARNING: GROQ_API_KEY not set. /api/discover and /api/retrain will fail with 503 until configured.")
@@ -211,7 +209,7 @@ Respond ONLY with valid JSON, no explanation outside it:
 }}"""
 
     raw = query_groq(prompt)
-    # Wrap parse in try/except so malformed LLM responses don't crash the demo
+
     try:
         data = extract_json(raw)
     except Exception as e:
@@ -293,9 +291,6 @@ async def trigger_retraining(req: RetrainRequest):
     if not selected:
         raise HTTPException(status_code=404, detail="No matching experiments found")
 
-    # Compute REAL accuracy from logged discrepancies (deterministic, not LLM-generated).
-    # When a judge asks "where does the accuracy number come from?", the answer is:
-    # "1 - mean(|predicted - measured|), computed in Python from logged lab data."
     discrepancies = [e["discrepancy"] for e in selected]
     real_accuracy = round(1 - (sum(discrepancies) / len(discrepancies)), 3) if discrepancies else 0.0
 
@@ -335,7 +330,6 @@ Analyse prediction discrepancies and return ONLY valid JSON:
 }}"""
 
     raw = query_groq(prompt)
-    # Wrap parse in try/except so malformed LLM responses don't crash the demo
     try:
         analysis = extract_json(raw)
     except Exception as e:
@@ -344,8 +338,6 @@ Analyse prediction discrepancies and return ONLY valid JSON:
             detail=f"Retrain analysis parsing failed. Please retry. ({str(e)[:120]})"
         )
 
-    # Override LLM's accuracy guess with the real number computed from data.
-    # The LLM still provides hypotheses, bias_direction, and feature reweighting reasoning.
     analysis["overall_model_accuracy"] = real_accuracy
     analysis["status_breakdown"] = status_breakdown
 
