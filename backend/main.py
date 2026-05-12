@@ -133,7 +133,7 @@ def query_groq(prompt: str) -> str:
             detail="GROQ_API_KEY not configured. Set it in your environment and restart the server."
         )
     response = groq_client.chat.completions.create(
-        model="llama-3.1-8b-instant",
+        model="llama3-8b-8192",
         messages=[{"role": "user", "content": prompt}],
         max_tokens=2500
     )
