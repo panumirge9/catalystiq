@@ -102,17 +102,31 @@ class ResearcherAnnotation(BaseModel):
 
 
 def extract_json(text: str):
+    
     match = re.search(r"```json\s*([\s\S]*?)```", text)
     if match:
-        return json.loads(match.group(1))
+        raw = match.group(1).strip()
+        raw = re.sub(r',\s*([}\]])', r'\1', raw)
+        return json.loads(raw)
+    
+    match = re.search(r"```\s*([\s\S]*?)```", text)
+    if match:
+        try:
+            raw = match.group(1).strip()
+            raw = re.sub(r',\s*([}\]])', r'\1', raw)
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            pass
+    
     match = re.search(r"(\{[\s\S]*\}|\[[\s\S]*\])", text)
     if match:
-        return json.loads(match.group(1))
+        raw = match.group(1).strip()
+        raw = re.sub(r',\s*([}\]])', r'\1', raw)
+        return json.loads(raw)
     raise ValueError("No JSON found in AI response")
 
 
 def query_groq(prompt: str) -> str:
-    # Graceful failure if API key wasn't configured at boot
     if not groq_client:
         raise HTTPException(
             status_code=503,
@@ -206,7 +220,9 @@ Respond ONLY with valid JSON, no explanation outside it:
     "reaction_enthalpy_kJ_mol": 0.0,
     "estimated_conversion_percent": 0.0
   }}
-}}"""
+}}
+
+IMPORTANT: Return ONLY the JSON object. No markdown, no explanation."""
 
     raw = query_groq(prompt)
 
@@ -305,7 +321,7 @@ async def trigger_retraining(req: RetrainRequest):
 Experimental results vs AI predictions:
 {json.dumps(selected, indent=2)}
 
-Analyse prediction discrepancies and return ONLY valid JSON:
+Analyse prediction discrepancies and return ONLY valid JSON with no extra text before or after:
 {{
   "overall_model_accuracy": 0.0,
   "bias_direction": "over-predicting or under-predicting",
@@ -327,16 +343,26 @@ Analyse prediction discrepancies and return ONLY valid JSON:
   ],
   "retrain_recommendation": "specific retraining strategy recommendation",
   "data_quality_flags": ["any data quality issues observed"]
-}}"""
+}}
 
-    raw = query_groq(prompt)
-    try:
-        analysis = extract_json(raw)
-    except Exception as e:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Retrain analysis parsing failed. Please retry. ({str(e)[:120]})"
-        )
+IMPORTANT: Return ONLY the JSON object. No markdown, no explanation, no text before or after the JSON."""
+
+    last_error = None
+    analysis = None
+    for attempt in range(2):
+        try:
+            raw = query_groq(prompt)
+            analysis = extract_json(raw)
+            break
+        except HTTPException:
+            raise
+        except Exception as e:
+            last_error = e
+            if attempt == 1:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Retrain analysis parsing failed after retry. ({str(last_error)[:120]})"
+                )
 
     analysis["overall_model_accuracy"] = real_accuracy
     analysis["status_breakdown"] = status_breakdown
