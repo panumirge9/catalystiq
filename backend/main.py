@@ -132,12 +132,40 @@ def query_groq(prompt: str) -> str:
             status_code=503,
             detail="GROQ_API_KEY not configured. Set it in your environment and restart the server."
         )
-    response = groq_client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=2500
+
+    active_models = [
+        "llama-3.3-70b-versatile", 
+        "llama-3.1-8b-instant",    
+        "llama3-70b-8192",         
+        "llama3-8b-8192",          
+        "gemma2-9b-it"             
+    ]
+
+    last_error = None
+
+    for model_name in active_models:
+        try:
+            print(f"⚡ Attempting AI Generation with: {model_name}...")
+            response = groq_client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=2500,
+                
+                response_format={"type": "json_object"} 
+            )
+            print(f"✅ Success with {model_name}!")
+            return response.choices[0].message.content
+            
+        except Exception as e:
+            print(f"⚠️ {model_name} failed or rate-limited: {str(e)[:100]}... Switching to next.")
+            last_error = e
+            continue  
+
+    
+    raise HTTPException(
+        status_code=502,
+        detail=f"All Groq models failed or rate-limited. Last error: {str(last_error)[:100]}"
     )
-    return response.choices[0].message.content
 
 
 def compute_composite_score(activity: float, selectivity: float, stability: float) -> float:
@@ -163,7 +191,7 @@ def root():
 async def discover_catalysts(query: ReactionQuery):
     chemistry_context = get_context_for_reaction(query.reaction)
 
-    prompt = f"""You are an expert computational chemist specialising in heterogeneous catalysis and sustainable fuels. You are advising GPS Renewables — India's largest biogas company — which is building the country's first Ethanol-to-Jet (ETJ) plant.
+    prompt = f"""You are an expert computational chemist specialising in heterogeneous catalysis and sustainable fuels. You are advising GPS Renewables — India's largest biogas company.
 
 Target reaction from researcher:
 Reaction: {query.reaction}
@@ -173,9 +201,14 @@ Constraints: {query.constraints or "None specified"}
 
 {chemistry_context}
 
+CRITICAL THERMODYNAMIC, CHEMICAL, AND ECONOMIC RULES (DO NOT VIOLATE):
+1. Realistic Metal Loadings: Supported precious metals (Pt, Pd, Ru, Rh) MUST be strictly between 0.1 wt% and 2.0 wt%. Base transition metals (Ni, Co, Cu, Fe, Mo, W) should be between 3 wt% and 20 wt%. NEVER propose >20 wt% for any supported metal.
+2. Thermal Stability (Sintering): The proposed catalyst MUST physically survive the requested temperature range. (e.g., do not propose Copper for >300°C, do not use standard Al2O3/SiO2 supports in >700°C environments with alkali ash, as they melt into silicates).
+3. Poisoning Tolerance: If the prompt mentions impurities (sulfur, alkali ash, phosphorus), avoid delicate noble metals and use robust supports like Olivine, Dolomite, or Spinel.
+
 Instructions:
-1. Return 4-5 KNOWN catalysts using the real data provided above. Do not invent names.
-2. Propose 3 NOVEL candidates based on the design seeds, with specific structural modifications and quantitative improvement estimates.
+1. Return 4-5 KNOWN catalysts using the real data provided above.
+2. Propose 3 NOVEL candidates. However, IF the context includes a "SYSTEM ALERT / NOVEL DESIGN LOCKOUT", you MUST obey it and leave the "novel_candidates" list completely empty: [].
 3. Rank all by composite performance.
 
 Respond ONLY with valid JSON, no explanation outside it:
@@ -233,6 +266,21 @@ IMPORTANT: Return ONLY the JSON object. No markdown, no explanation."""
             status_code=502,
             detail=f"AI response parsing failed. Please retry. ({str(e)[:120]})"
         )
+
+    if "SYSTEM ALERT" in chemistry_context:
+        
+        data["novel_candidates"] = []
+        
+        
+        current_summary = data.get("reaction_summary", "Unverified reaction")
+        if "[OUT OF DOMAIN]" not in current_summary:
+            data["reaction_summary"] = f"[OUT OF DOMAIN] - {current_summary}"
+            
+        
+        for known in data.get("known_catalysts", []):
+            if "Unverified" not in known.get("source", ""):
+                known["source"] = known.get("source", "") + " (Unverified Database)"
+    
 
     all_candidates = []
     for c in data.get("known_catalysts", []):
