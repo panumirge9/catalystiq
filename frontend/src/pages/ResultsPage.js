@@ -6,6 +6,406 @@ import {
 } from 'recharts';
 import { Download, MessageSquarePlus, Search, Star, Info } from 'lucide-react';
 
+
+let mol3DLoadingPromise = null;
+function load3Dmol() {
+  if (typeof window === 'undefined') return Promise.reject('no window');
+  if (window.$3Dmol) return Promise.resolve(window.$3Dmol);
+  if (mol3DLoadingPromise) return mol3DLoadingPromise;
+  mol3DLoadingPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.0.3/3Dmol-min.js';
+    s.onload = () => resolve(window.$3Dmol);
+    s.onerror = () => reject(new Error('failed to load 3Dmol'));
+    document.head.appendChild(s);
+  });
+  return mol3DLoadingPromise;
+}
+
+
+const REACTION_MAP = {
+  ethanol: {
+    reactants: [
+      { name: 'Ethanol',  formula: 'C2H5OH', smiles: 'CCO' }
+    ],
+    product: { name: 'Jet hydrocarbons', formula: 'C8-C16' },
+    pathway: 'Dehydration -> Oligomerization -> Cyclization'
+  },
+  co2: {
+    reactants: [
+      { name: 'Carbon Dioxide', formula: 'CO2', smiles: 'O=C=O' },
+      { name: 'Hydrogen', formula: 'H2', smiles: '[H][H]' }
+    ],
+    product: { name: 'Methanol', formula: 'CH3OH' },
+    pathway: 'CO2 + 3H2 -> CH3OH + H2O'
+  },
+  co: {
+    reactants: [
+      { name: 'Carbon Monoxide', formula: 'CO', smiles: '[C-]#[O+]' },
+      { name: 'Hydrogen', formula: 'H2', smiles: '[H][H]' }
+    ],
+    product: { name: 'Ethanol', formula: 'C2H5OH' },
+    pathway: 'CO + 2H2 -> C2H5OH'
+  },
+  glucose: {
+    reactants: [
+      { name: 'Glucose', formula: 'C6H12O6', smiles: 'OCC1OC(O)C(O)C(O)C1O' }
+    ],
+    product: { name: 'Syngas', formula: 'CO + H2' },
+    pathway: 'Gasification + tar cracking'
+  },
+  methanol: {
+    reactants: [
+      { name: 'Methanol', formula: 'CH3OH', smiles: 'CO' }
+    ],
+    product: { name: 'Hydrocarbons', formula: 'CnH2n' },
+    pathway: 'Dehydration -> olefin formation'
+  }
+};
+
+function Catalyst3D({ meta, name }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!ref.current) return;
+    ref.current.innerHTML = '';
+
+    load3Dmol().then(($3Dmol) => {
+      if (cancelled || !ref.current) return;
+      const container = document.createElement('div');
+      container.style.cssText = 'width:100%;height:240px;position:relative;';
+      ref.current.appendChild(container);
+
+      const viewer = $3Dmol.createViewer(container, {
+        backgroundColor: '#F5F3EC',
+        antialias: true
+      });
+
+      buildCatalystLattice(viewer, meta, name);
+      viewer.zoomTo();
+      viewer.render();
+      viewer.spin('y', 0.4);
+    }).catch(() => {
+      if (ref.current) {
+        ref.current.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:240px;color:#9ca3af;font-family:monospace;font-size:12px;">3D viewer unavailable</div>';
+      }
+    });
+
+    return () => { cancelled = true; if (ref.current) ref.current.innerHTML = ''; };
+  }, [meta, name]);
+
+  return <div ref={ref} style={{ width: '100%', height: 240, background: '#F5F3EC', borderRadius: 4 }} />;
+}
+
+function buildCatalystLattice(viewer, meta, name) {
+  const schematic = meta.schematic;
+  const nameLower = (name || '').toLowerCase();
+  let atoms = [];
+
+  if (schematic === 'zeolite') {
+    const a = 2.5;
+    for (let i = 0; i < 4; i++) {
+      for (let j = 0; j < 4; j++) {
+        for (let k = 0; k < 3; k++) {
+          const x = i * a, y = j * a, z = k * a;
+          atoms.push({ elem: 'Si', x, y, z });
+          atoms.push({ elem: 'O', x: x + a/2, y, z });
+          atoms.push({ elem: 'O', x, y: y + a/2, z });
+          atoms.push({ elem: 'O', x, y, z: z + a/2 });
+        }
+      }
+    }
+    atoms.push({ elem: 'H', x: 4, y: 4, z: 2.5 });
+
+    if (nameLower.includes('ga')) {
+      atoms.push({ elem: 'Ga', x: 2.5, y: 5, z: 2.5 });
+      atoms.push({ elem: 'Ga', x: 5, y: 2.5, z: 2.5 });
+    }
+    if (nameLower.includes('p ') || nameLower.includes('-p') || nameLower.includes('/p')) {
+      atoms.push({ elem: 'P', x: 5, y: 5, z: 2.5 });
+    }
+    if (nameLower.includes('pd')) {
+      atoms.push({ elem: 'Pd', x: 4, y: 4, z: 2.5 });
+    }
+    if (nameLower.includes('cu-co') || nameLower.includes('cu/co')) {
+      atoms.push({ elem: 'Cu', x: 3.5, y: 4, z: 2.5 });
+      atoms.push({ elem: 'Co', x: 4.5, y: 4, z: 2.5 });
+    }
+  }
+  else if (schematic === 'mesoporous') {
+    const a = 2.0;
+    for (let ring = 0; ring < 3; ring++) {
+      const r = ring * 1.5 + 2;
+      const n = 6 + ring * 2;
+      for (let t = 0; t < n; t++) {
+        const ang = (t / n) * Math.PI * 2;
+        for (let z = 0; z < 5; z++) {
+          atoms.push({ elem: 'Si', x: r * Math.cos(ang), y: r * Math.sin(ang), z: z * a });
+          if (z < 4) {
+            atoms.push({ elem: 'O', x: r * Math.cos(ang), y: r * Math.sin(ang), z: z * a + a/2 });
+          }
+        }
+      }
+    }
+    for (let z = 0; z < 5; z++) {
+      atoms.push({ elem: 'Fe', x: 0, y: 0, z: z * 2 });
+    }
+  }
+  else if (schematic === 'supportedMetal') {
+    const a = 2.2;
+    for (let i = 0; i < 6; i++) {
+      for (let j = 0; j < 6; j++) {
+        const x = i * a, y = j * a;
+        atoms.push({ elem: 'Al', x, y, z: 0 });
+        atoms.push({ elem: 'O', x: x + a/2, y, z: 0 });
+        atoms.push({ elem: 'O', x, y: y + a/2, z: 0 });
+        if (i < 5 && j < 5) {
+          atoms.push({ elem: 'Al', x: x + a/2, y: y + a/2, z: -a/2 });
+        }
+      }
+    }
+    const metalSym = extractFirstMetal(name) || 'Ni';
+    const clusterCenters = [[3, 3, 2.5], [8, 4, 2.5], [4, 8, 2.5]];
+    clusterCenters.forEach(([cx, cy, cz]) => {
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dz = 0; dz <= 1; dz++) {
+            
+            atoms.push({ elem: metalSym, x: cx + dx * 1.6, y: cy + dy * 1.6, z: cz + dz * 1.6 });
+          }
+        }
+      }
+    });
+  }
+  else if (schematic === 'oxideSurface') {
+    const a = 2.4;
+    const metalSym = extractFirstMetal(name) || 'In';
+    for (let i = 0; i < 5; i++) {
+      for (let j = 0; j < 5; j++) {
+        for (let k = 0; k < 3; k++) {
+          const x = i * a, y = j * a, z = k * a;
+          atoms.push({ elem: metalSym, x, y, z });
+          const isVacancy = (i === 2 && j === 2 && k === 1) || (i === 3 && j === 1 && k === 1);
+          if (!isVacancy) {
+            atoms.push({ elem: 'O', x: x + a/2, y, z });
+            atoms.push({ elem: 'O', x, y: y + a/2, z });
+          }
+        }
+      }
+    }
+  }
+  else {
+    const metalSym = extractFirstMetal(name) || 'Fe';
+    for (let i = 0; i < 4; i++) {
+      for (let j = 0; j < 4; j++) {
+        for (let k = 0; k < 3; k++) {
+          atoms.push({ elem: metalSym, x: i * 2.2, y: j * 2.2, z: k * 2.2 });
+        }
+      }
+    }
+  }
+
+  const xyz = atoms.length + '\ncatalyst\n' +
+    atoms.map(a => `${a.elem} ${a.x.toFixed(3)} ${a.y.toFixed(3)} ${a.z.toFixed(3)}`).join('\n');
+
+  viewer.addModel(xyz, 'xyz');
+  viewer.setStyle({}, {
+    sphere: { scale: 0.35, colorscheme: 'Jmol' }
+  });
+  viewer.setStyle({ elem: 'Ga' }, { sphere: { scale: 0.55, color: '#4ECDC4' } });
+  viewer.setStyle({ elem: 'P' },  { sphere: { scale: 0.5, color: '#FFB627' } });
+  viewer.setStyle({ elem: 'Pd' }, { sphere: { scale: 0.6, color: '#D4AC0D' } });
+}
+
+function extractFirstMetal(name) {
+  if (!name) return null;
+  const metals = ['Ni','Cu','Co','Fe','Ru','Rh','Pd','Pt','Mn','Mo','Zn','In','Ce','Zr','Ti','Al'];
+  for (const m of metals) {
+    const re = new RegExp('\\b' + m + '\\b', 'i');
+    if (re.test(name)) return m;
+  }
+  return null;
+}
+
+function Reactants3D({ substrate }) {
+  const ref = useRef(null);
+  const rxn = REACTION_MAP[substrate.key] || REACTION_MAP.ethanol;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!ref.current) return;
+    ref.current.innerHTML = '';
+
+    load3Dmol().then(async ($3Dmol) => {
+      if (cancelled || !ref.current) return;
+      const container = document.createElement('div');
+      container.style.cssText = 'width:100%;height:240px;position:relative;';
+      ref.current.appendChild(container);
+
+      const viewer = $3Dmol.createViewer(container, {
+        backgroundColor: '#FDFCF8',
+        antialias: true
+      });
+
+      let offsetX = 0;
+      for (const r of rxn.reactants) {
+        try {
+          const url = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(r.smiles)}/SDF?record_type=3d`;
+          const res = await fetch(url);
+          const sdf = await res.text();
+          if (cancelled) return;
+          if (sdf.includes('V2000') || sdf.includes('V3000')) {
+            const model = viewer.addModel(sdf, 'sdf');
+            const atoms = model.selectedAtoms({});
+            
+            
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+            let minZ = Infinity, maxZ = -Infinity;
+
+            atoms.forEach(at => {
+              if (at.x < minX) minX = at.x;
+              if (at.x > maxX) maxX = at.x;
+              if (at.y < minY) minY = at.y;
+              if (at.y > maxY) maxY = at.y;
+              if (at.z < minZ) minZ = at.z;
+              if (at.z > maxZ) maxZ = at.z;
+            });
+
+            const shiftY = -((minY + maxY) / 2);
+            const shiftZ = -((minZ + maxZ) / 2);
+            const shiftX = offsetX - minX;
+
+            atoms.forEach(at => { 
+              at.x += shiftX;
+              at.y += shiftY;
+              at.z += shiftZ;
+            });
+            
+            
+            offsetX += (maxX - minX) + 4;
+          }
+        } catch (e) {  }
+      }
+
+      viewer.setStyle({}, {
+        stick: { radius: 0.18, colorscheme: 'Jmol' },
+        sphere: { scale: 0.28, colorscheme: 'Jmol' }
+      });
+      viewer.zoomTo();
+      viewer.render();
+      viewer.spin('y', 0.5);
+    }).catch(() => {
+      if (ref.current) {
+        ref.current.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:240px;color:#9ca3af;font-family:monospace;font-size:12px;">3D viewer unavailable</div>';
+      }
+    });
+
+    return () => { cancelled = true; if (ref.current) ref.current.innerHTML = ''; };
+  }, [substrate.key]);
+
+  return <div ref={ref} style={{ width: '100%', height: 240, background: '#FDFCF8', borderRadius: 4 }} />;
+}
+
+function Reaction3D({ substrate, meta, name }) {
+  const ref = useRef(null);
+  const rxn = REACTION_MAP[substrate.key] || REACTION_MAP.ethanol;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!ref.current) return;
+    ref.current.innerHTML = '';
+
+    load3Dmol().then(async ($3Dmol) => {
+      if (cancelled || !ref.current) return;
+      const container = document.createElement('div');
+      container.style.cssText = 'width:100%;height:240px;position:relative;';
+      ref.current.appendChild(container);
+
+      const viewer = $3Dmol.createViewer(container, {
+        backgroundColor: '#F5F3EC',
+        antialias: true
+      });
+
+      const slab = [];
+      const a = 2.4;
+      const metalSym = extractFirstMetal(name) ||
+        (meta.schematic === 'zeolite' ? 'Si' : 'Ni');
+      for (let i = -2; i <= 2; i++) {
+        for (let j = -2; j <= 2; j++) {
+          slab.push(`${metalSym} ${(i*a).toFixed(2)} ${(j*a).toFixed(2)} 0.00`);
+          slab.push(`O ${(i*a + a/2).toFixed(2)} ${(j*a).toFixed(2)} 0.00`);
+          slab.push(`O ${(i*a).toFixed(2)} ${(j*a + a/2).toFixed(2)} 0.00`);
+        }
+      }
+      slab.push(`Au 0.00 0.00 1.50`); 
+
+      const slabXYZ = slab.length + '\nslab\n' + slab.join('\n');
+      viewer.addModel(slabXYZ, 'xyz');
+      viewer.setStyle({ model: 0 }, {
+        sphere: { scale: 0.4, colorscheme: 'Jmol' }
+      });
+      viewer.setStyle({ model: 0, elem: 'Au' }, {
+        sphere: { scale: 0.6, color: '#F59E0B' }
+      });
+
+      try {
+        const r = rxn.reactants[0];
+        const url = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(r.smiles)}/SDF?record_type=3d`;
+        const res = await fetch(url);
+        const sdf = await res.text();
+        if (cancelled) return;
+        if (sdf.includes('V2000') || sdf.includes('V3000')) {
+          const model = viewer.addModel(sdf, 'sdf');
+          const atoms = model.selectedAtoms({});
+
+          
+          let minX = Infinity, maxX = -Infinity;
+          let minY = Infinity, maxY = -Infinity;
+          let minZ = Infinity;
+
+          atoms.forEach(at => {
+            if (at.x < minX) minX = at.x;
+            if (at.x > maxX) maxX = at.x;
+            if (at.y < minY) minY = at.y;
+            if (at.y > maxY) maxY = at.y;
+            if (at.z < minZ) minZ = at.z;
+          });
+
+        
+          const shiftX = -((minX + maxX) / 2);
+          const shiftY = -((minY + maxY) / 2);
+          const shiftZ = 3.0 - minZ; 
+          
+          atoms.forEach(at => { 
+            at.x += shiftX; 
+            at.y += shiftY;
+            at.z += shiftZ; 
+          });
+
+          viewer.setStyle({ model: 1 }, {
+            stick: { radius: 0.2, colorscheme: 'Jmol' },
+            sphere: { scale: 0.3, colorscheme: 'Jmol' }
+          });
+        }
+      } catch (e) {  }
+
+      viewer.zoomTo();
+      viewer.render();
+      viewer.spin('y', 0.4);
+    }).catch(() => {
+      if (ref.current) {
+        ref.current.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:240px;color:#9ca3af;font-family:monospace;font-size:12px;">3D viewer unavailable</div>';
+      }
+    });
+
+    return () => { cancelled = true; if (ref.current) ref.current.innerHTML = ''; };
+  }, [substrate.key, meta.schematic, name]);
+
+  return <div ref={ref} style={{ width: '100%', height: 240, background: '#F5F3EC', borderRadius: 4 }} />;
+}
+
 export default function ResultsPage({ results, onFeedback, onNewSearch }) {
   const [selected, setSelected] = useState(null);
 
@@ -228,146 +628,128 @@ export default function ResultsPage({ results, onFeedback, onNewSearch }) {
 
 function CatalystIdentityPanel({ formula, name, type, substrate }) {
   const meta = analyseCatalyst(name, formula);
+  const rxn = REACTION_MAP[substrate.key] || REACTION_MAP.ethanol;
+
+  const panelStyle = {
+    background: '#FDFCF8',
+    borderRadius: 6,
+    border: '1px solid var(--border)',
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column'
+  };
+  const headerStyle = {
+    padding: '7px 10px',
+    borderBottom: '1px solid var(--border)',
+    background: '#F5F3EC',
+    fontFamily: 'var(--mono)',
+    fontSize: 9,
+    color: 'var(--faint)',
+    letterSpacing: '1.5px'
+  };
+  const footerStyle = {
+    padding: '6px 10px',
+    borderTop: '1px solid var(--border)',
+    background: '#F5F3EC',
+    textAlign: 'center'
+  };
 
   return (
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-      gap: 12,
-      alignItems: 'stretch'
-    }}>
+    <div>
       
       <div style={{
-        background: '#F5F3EC',
-        borderRadius: 6,
-        border: '1px solid var(--border)',
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
-        minWidth: 0
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        marginBottom: 10, fontFamily: 'var(--mono)', fontSize: 9,
+        color: 'var(--faint)', letterSpacing: '1.5px'
       }}>
-        <div style={{
-          padding: '8px 12px',
-          borderBottom: '1px solid var(--border)',
-          fontFamily: 'var(--mono)',
-          fontSize: 9,
-          color: 'var(--faint)',
-          letterSpacing: '1.5px',
-          background: '#FDFCF8'
-        }}>
-          SUBSTRATE · {substrate.label.toUpperCase()}
+        <span>3D MOLECULAR VIEW</span>
+        {type === 'Novel' && (
+          <span style={{
+            fontSize: 8, padding: '2px 7px', borderRadius: 2,
+            background: 'var(--green-light,#DCFCE7)',
+            color: 'var(--green,#166534)',
+            border: '0.5px solid var(--green-border,#BBF7D0)'
+          }}>AI NOVEL</span>
+        )}
+      </div>
+
+      
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+        gap: 12
+      }}>
+
+        
+        <div style={panelStyle}>
+          <div style={headerStyle}>1 · CATALYST STRUCTURE</div>
+          <div style={{ padding: 8 }}>
+            <Catalyst3D meta={meta} name={name} />
+          </div>
+          <div style={footerStyle}>
+            <div style={{ fontFamily: 'var(--mono)', fontSize: 11, fontWeight: 600, color: 'var(--text)', wordBreak: 'break-word' }}>{formula}</div>
+            <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--faint)', marginTop: 2 }}>{meta.classLabel}</div>
+          </div>
         </div>
-        <SubstrateViewer substrate={substrate} />
-        <div style={{
-          padding: '6px 12px 8px',
-          fontSize: 10,
-          color: 'var(--faint)',
-          fontFamily: 'var(--mono)',
-          textAlign: 'center'
-        }}>
-          {substrate.formula} · 3D from PubChem
+
+        
+        <div style={panelStyle}>
+          <div style={headerStyle}>2 · REACTANT MOLECULES</div>
+          <div style={{ padding: 8 }}>
+            <Reactants3D substrate={substrate} />
+          </div>
+          <div style={footerStyle}>
+            <div style={{ fontFamily: 'var(--mono)', fontSize: 11, fontWeight: 600, color: 'var(--text)', wordBreak: 'break-word' }}>
+              {rxn.reactants.map(r => r.formula).join(' + ')}
+            </div>
+            <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--faint)', marginTop: 2 }}>3D from PubChem</div>
+          </div>
+        </div>
+
+        
+        <div style={panelStyle}>
+          <div style={headerStyle}>3 · REACTION ON SURFACE</div>
+          <div style={{ padding: 8 }}>
+            <Reaction3D substrate={substrate} meta={meta} name={name} />
+          </div>
+          <div style={footerStyle}>
+            <div style={{ fontFamily: 'var(--mono)', fontSize: 11, fontWeight: 600, color: '#166534', wordBreak: 'break-word' }}>
+              → {rxn.product.formula}
+            </div>
+            <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--faint)', marginTop: 2 }}>{rxn.product.name}</div>
+          </div>
         </div>
       </div>
 
+      
       <div style={{
-        background: '#FDFCF8',
-        borderRadius: 6,
-        border: '1px solid var(--border)',
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
-        minWidth: 0  
+        marginTop: 12, padding: '10px 14px',
+        background: '#FDFCF8', borderRadius: 6,
+        border: '1px solid var(--border)'
       }}>
         <div style={{
-          padding: '8px 12px',
-          borderBottom: '1px solid var(--border)',
-          fontFamily: 'var(--mono)',
-          fontSize: 9,
-          color: 'var(--faint)',
-          letterSpacing: '1.5px',
-          background: '#F5F3EC',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 6,
-          minWidth: 0
+          fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--faint)',
+          letterSpacing: '1.5px', marginBottom: 8
         }}>
-          <span style={{
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            minWidth: 0
-          }}>CATALYST · {meta.classLabel.toUpperCase()}</span>
-          {type === 'Novel' && (
-            <span style={{
-              fontSize: 8,
-              padding: '1px 5px',
-              background: 'var(--green-light, #DCFCE7)',
-              color: 'var(--green, #166534)',
-              border: '0.5px solid var(--green-border, #BBF7D0)',
-              borderRadius: 2,
-              letterSpacing: '0.5px',
-              flexShrink: 0
-            }}>AI NOVEL</span>
-          )}
+          CATALYST PROPERTIES
         </div>
-
-      
         <div style={{
-          padding: '10px 12px 4px',
-          display: 'flex',
-          justifyContent: 'center',
-          minWidth: 0,
-          width: '100%'
-        }}>
-          <ActiveSiteSchematic meta={meta} />
-        </div>
-
-        
-        <div style={{
-          padding: '6px 12px 4px',
-          fontFamily: 'var(--mono)',
-          fontSize: 12,
-          color: 'var(--text)',
-          fontWeight: 500,
-          textAlign: 'center',
-          wordBreak: 'break-word',
-          overflowWrap: 'anywhere',
-          lineHeight: 1.35
-        }}>
-          {formula}
-        </div>
-
-        
-        <div style={{
-          padding: '8px 12px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 4,
-          fontSize: 11,
-          flex: 1
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: 8
         }}>
           <Row label="Active phase" value={meta.activePhase} color="var(--accent)" />
           <Row label="Support" value={meta.support} color="var(--muted)" />
           <Row label="Active sites" value={meta.activeSites} color="var(--muted)" />
           {meta.framework && <Row label="Framework" value={meta.framework} color="var(--muted)" />}
         </div>
-
         <div style={{
-          padding: '6px 12px 8px',
-          fontSize: 9,
-          color: 'var(--faint)',
-          fontFamily: 'var(--mono)',
-          borderTop: '1px solid var(--border)',
-          background: '#F5F3EC',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6
+          marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--border)',
+          display: 'flex', alignItems: 'center', gap: 6, fontSize: 10,
+          color: 'var(--faint)', fontFamily: 'var(--mono)'
         }}>
-          <Info size={10} style={{ flexShrink: 0 }} />
-          <span style={{ lineHeight: 1.4 }}>
-            Heterogeneous catalyst — no single-molecule structure. Crystal lattice rendering: Phase 2.
-          </span>
+          <Info size={10} />
+          All 3 viewers are interactive — drag to rotate, scroll to zoom
         </div>
       </div>
     </div>
@@ -378,23 +760,14 @@ function Row({ label, value, color }) {
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', minWidth: 0 }}>
       <span style={{
-        fontFamily: 'var(--mono)',
-        fontSize: 9,
-        color: 'var(--faint)',
-        letterSpacing: '1px',
-        minWidth: 70,
-        flexShrink: 0
+        fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--faint)',
+        letterSpacing: '1px', minWidth: 80, flexShrink: 0
       }}>
         {label.toUpperCase()}
       </span>
       <span style={{
-        fontSize: 11,
-        color,
-        lineHeight: 1.4,
-        wordBreak: 'break-word',
-        overflowWrap: 'anywhere',
-        minWidth: 0,
-        flex: 1
+        fontSize: 11, color, lineHeight: 1.4,
+        wordBreak: 'break-word', overflowWrap: 'anywhere', minWidth: 0, flex: 1
       }}>
         {value}
       </span>
@@ -410,88 +783,13 @@ function detectSubstrate(reactionText) {
   if (t.includes('methanol')) {
     return { key: 'methanol', label: 'Methanol', formula: 'CH₃OH', smiles: 'CO' };
   }
-  if (t.includes('syngas') || t.includes('fischer')) {
+  if (t.includes('syngas') || t.includes('fischer') || t.includes('co ') || t.includes('co+')) {
     return { key: 'co', label: 'Carbon Monoxide', formula: 'CO', smiles: '[C-]#[O+]' };
   }
   if (t.includes('biomass') || t.includes('cellulose') || t.includes('glucose')) {
     return { key: 'glucose', label: 'Glucose', formula: 'C₆H₁₂O₆', smiles: 'OCC1OC(O)C(O)C(O)C1O' };
   }
   return { key: 'ethanol', label: 'Ethanol', formula: 'C₂H₅OH', smiles: 'CCO' };
-}
-
-function SubstrateViewer({ substrate }) {
-  const ref = useRef();
-
-  useEffect(() => {
-    if (!ref.current) return;
-    let cancelled = false;
-    ref.current.innerHTML = '';
-
-    const loadViewer = () => {
-      if (cancelled || !window.$3Dmol || !ref.current) return;
-      ref.current.innerHTML = '';
-      const container = document.createElement('div');
-      container.style.cssText = 'width:100%;height:170px;position:relative;overflow:hidden;';
-      ref.current.appendChild(container);
-
-      const viewer = window.$3Dmol.createViewer(container, {
-        backgroundColor: '#F5F3EC',
-        antialias: true
-      });
-
-      fetch(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(substrate.smiles)}/SDF?record_type=3d`)
-        .then(r => r.text())
-        .then(sdf => {
-          if (cancelled) return;
-          if (!sdf.includes('V2000') && !sdf.includes('V3000')) throw new Error('no sdf');
-          viewer.addModel(sdf, 'sdf');
-          viewer.setStyle({}, {
-            stick: { radius: 0.18, colorscheme: 'Jmol' },
-            sphere: { scale: 0.28, colorscheme: 'Jmol' }
-          });
-          viewer.zoomTo();
-          viewer.render();
-          viewer.spin('y', 0.6);
-        })
-        .catch(() => {
-          if (cancelled || !ref.current) return;
-          ref.current.innerHTML = `
-            <div style="display:flex;align-items:center;justify-content:center;height:170px;flex-direction:column;gap:6px;">
-              <div style="font-family:var(--mono);font-size:22px;color:var(--accent);font-weight:500;">${substrate.formula}</div>
-              <div style="font-size:10px;color:var(--faint);font-family:var(--mono);">3D unavailable — showing formula</div>
-            </div>`;
-        });
-    };
-
-    if (window.$3Dmol) {
-      loadViewer();
-    } else {
-      const s = document.createElement('script');
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.0.3/3Dmol-min.js';
-      s.onload = loadViewer;
-      s.onerror = () => {
-        if (ref.current) {
-          ref.current.innerHTML = `
-            <div style="display:flex;align-items:center;justify-content:center;height:170px;">
-              <div style="font-family:var(--mono);font-size:22px;color:var(--accent);">${substrate.formula}</div>
-            </div>`;
-        }
-      };
-      document.head.appendChild(s);
-    }
-
-    return () => {
-      cancelled = true;
-      if (ref.current) ref.current.innerHTML = '';
-    };
-  }, [substrate.key, substrate.smiles, substrate.formula]);
-
-  return (
-    <div
-      ref={ref}
-      style={{ width: '100%', height: 170, background: '#F5F3EC', isolation: 'isolate', flex: 1 }}
-    />
-  );
 }
 
 function analyseCatalyst(name, formula) {
@@ -529,87 +827,30 @@ function analyseCatalyst(name, formula) {
       schematic: 'mesoporous'
     };
   }
-
-  if (n.includes('cu/zno') || n.includes('cu/zno/al') || n.includes('cu-zno')) {
-    return {
-      classLabel: 'Industrial mixed oxide',
-      activePhase: 'Cu nanoparticles',
-      support: 'ZnO / Al₂O₃',
-      activeSites: 'Cu–ZnO interface (formate route)',
-      schematic: 'supportedMetal'
-    };
-  }
-  if (n.includes('in2o3') || n.includes('in₂o₃') || n.includes('in-zr')) {
+  if (n.includes('in2o3') || n.includes('in₂o₃') || (n.includes('zro2') && !n.includes('/')) || (n.includes('zro₂') && !n.includes('/'))) {
     return {
       classLabel: 'Mixed oxide',
-      activePhase: 'In₂O₃ surface',
-      support: 'ZrO₂',
-      activeSites: 'Oxygen vacancies (Vo)',
+      activePhase: 'Oxygen vacancies + metal Lewis sites',
+      support: extractSupport(formula) || 'Oxide phase',
+      activeSites: 'O-vacancies on oxide surface',
       schematic: 'oxideSurface'
     };
   }
-  if (n.includes('zno-zro') || n.includes('zno/zro')) {
+  if (n.includes('dolomite') || n.includes('cao')) {
     return {
-      classLabel: 'Solid solution oxide',
-      activePhase: 'Zn-substituted ZrO₂',
-      support: 'ZrO₂ matrix',
-      activeSites: 'Lewis acid + oxygen vacancies',
+      classLabel: 'Basic oxide',
+      activePhase: 'CaO–MgO basic sites',
+      support: 'Mineral lattice',
+      activeSites: 'Surface oxide ions',
       schematic: 'oxideSurface'
     };
   }
-  if (n.includes('cu/ceo') || n.includes('cu-ceo')) {
+  if (n.includes('olivine')) {
     return {
-      classLabel: 'Supported metal / redox oxide',
-      activePhase: 'Cu nanoparticles',
-      support: 'CeO₂ (fluorite)',
-      activeSites: 'Cu–CeO₂ interface (Ce³⁺/Ce⁴⁺)',
-      schematic: 'supportedMetal'
-    };
-  }
-
-  if (n.includes('fe-k') || n.includes('fischer') || n.includes('fe/k')) {
-    return {
-      classLabel: 'Fischer-Tropsch',
-      activePhase: 'Fe carbide (χ-Fe₅C₂)',
-      support: 'SiO₂',
-      activeSites: 'Fe carbide + K promoter',
-      schematic: 'supportedMetal'
-    };
-  }
-  if (n.includes('mos2') || n.includes('mos₂')) {
-    return {
-      classLabel: 'Sulfide catalyst',
-      activePhase: 'MoS₂ edges',
-      support: 'Al₂O₃',
-      activeSites: 'Mo–S vacancy edges (K-promoted)',
-      schematic: 'oxideSurface'
-    };
-  }
-  if (n.includes('rh/sio')) {
-    return {
-      classLabel: 'Supported precious metal',
-      activePhase: 'Rh nanoparticles',
-      support: 'SiO₂',
-      activeSites: 'Rh ensembles (CO insertion)',
-      schematic: 'supportedMetal'
-    };
-  }
-
-  if (/cu.*co/i.test(name) || /cu-co/i.test(name)) {
-    return {
-      classLabel: 'Bimetallic / oxide',
-      activePhase: 'Cu-Co alloy',
-      support: 'ZnO–Al₂O₃',
-      activeSites: 'Surface carbide (C–C coupling)',
-      schematic: 'supportedMetal'
-    };
-  }
-  if (/ni\/al/i.test(name) || n.includes('ni/al')) {
-    return {
-      classLabel: 'Bifunctional',
-      activePhase: 'Ni nanoparticles',
-      support: 'Al₂O₃–SiO₂',
-      activeSites: 'Ni metal + acid sites',
+      classLabel: 'Mineral support',
+      activePhase: extractDopants(name) || 'Ni nanoparticles',
+      support: '(Mg,Fe)₂SiO₄ olivine',
+      activeSites: 'Fe-Ni alloy + lattice Fe sites',
       schematic: 'supportedMetal'
     };
   }
@@ -648,134 +889,4 @@ function extractSupport(formula) {
   if (/ceo2|ceo₂/i.test(formula)) return 'CeO₂';
   if (/tio2|tio₂/i.test(formula)) return 'TiO₂';
   return null;
-}
-
-function ActiveSiteSchematic({ meta }) {
-  const W = 200, H = 110;
-  const common = {
-    width: '100%',
-    height: 'auto',
-    viewBox: `0 0 ${W} ${H}`,
-    preserveAspectRatio: 'xMidYMid meet',
-    style: { maxWidth: 200, maxHeight: 110, display: 'block' }
-  };
-
-  switch (meta.schematic) {
-    case 'zeolite':
-      return (
-        <svg {...common} xmlns="http://www.w3.org/2000/svg">
-          
-          <defs>
-            <pattern id="mfi" x="0" y="0" width="22" height="19" patternUnits="userSpaceOnUse">
-              <polygon points="11,0 22,5.5 22,16.5 11,22 0,16.5 0,5.5"
-                fill="none" stroke="#9ca3af" strokeWidth="0.7" opacity="0.6" />
-            </pattern>
-          </defs>
-          <rect x="10" y="10" width={W - 20} height={H - 20} fill="url(#mfi)" rx="4" />
-          
-          <circle cx={W / 2} cy={H / 2} r="14" fill="#1E5FAD" opacity="0.15" />
-          <circle cx={W / 2} cy={H / 2} r="6" fill="#1E5FAD" />
-          <text x={W / 2} y={H / 2 + 3} fontSize="8" fill="#FDFCF8" textAnchor="middle" fontFamily="monospace" fontWeight="600">H⁺</text>
-          
-          <text x={W / 2} y={H - 14} fontSize="8" fill="#6b7280" textAnchor="middle" fontFamily="monospace">10-MR pore</text>
-        </svg>
-      );
-
-    case 'mesoporous':
-      return (
-        <svg {...common} xmlns="http://www.w3.org/2000/svg">
-          
-          {[0, 1, 2].map(row =>
-            [0, 1, 2, 3].map(col => {
-              const cx = 30 + col * 40 + (row % 2) * 20;
-              const cy = 25 + row * 30;
-              return (
-                <g key={`${row}-${col}`}>
-                  <circle cx={cx} cy={cy} r="12" fill="none" stroke="#9ca3af" strokeWidth="1" opacity="0.7" />
-                  <circle cx={cx} cy={cy} r="6" fill="#1E5FAD" opacity="0.25" />
-                </g>
-              );
-            })
-          )}
-          <text x={W / 2} y={H - 6} fontSize="8" fill="#6b7280" textAnchor="middle" fontFamily="monospace">~3 nm channels</text>
-        </svg>
-      );
-
-    case 'supportedMetal':
-      return (
-        <svg {...common} xmlns="http://www.w3.org/2000/svg">
-        
-          <rect x="10" y={H - 30} width={W - 20} height="20" fill="#9ca3af" opacity="0.25" rx="2" />
-          <rect x="10" y={H - 30} width={W - 20} height="20" fill="none" stroke="#9ca3af" strokeWidth="0.8" rx="2" />
-          {/* Lattice dots on support */}
-          {Array.from({ length: 9 }).map((_, i) => (
-            <circle key={i} cx={20 + i * 20} cy={H - 20} r="1.5" fill="#6b7280" opacity="0.6" />
-          ))}
-      
-          <ellipse cx="55" cy={H - 30} rx="14" ry="14" fill="#1E5FAD" opacity="0.85" />
-          <ellipse cx="55" cy={H - 30} rx="6" ry="3" fill="#FDFCF8" opacity="0.3" />
-          <ellipse cx="110" cy={H - 30} rx="18" ry="18" fill="#1E5FAD" opacity="0.85" />
-          <ellipse cx="110" cy={H - 30} rx="8" ry="4" fill="#FDFCF8" opacity="0.3" />
-          <ellipse cx="160" cy={H - 30} rx="11" ry="11" fill="#1E5FAD" opacity="0.85" />
-          
-          <rect x="0" y={H - 30} width={W} height="20" fill="#FDFCF8" />
-          <rect x="10" y={H - 30} width={W - 20} height="20" fill="#9ca3af" opacity="0.25" rx="2" />
-          <rect x="10" y={H - 30} width={W - 20} height="20" fill="none" stroke="#9ca3af" strokeWidth="0.8" rx="2" />
-          {Array.from({ length: 9 }).map((_, i) => (
-            <circle key={`d${i}`} cx={20 + i * 20} cy={H - 20} r="1.5" fill="#6b7280" opacity="0.6" />
-          ))}
-          
-          <path d="M 41,80 A 14,14 0 0 1 69,80 Z" fill="#1E5FAD" />
-          <path d="M 92,80 A 18,18 0 0 1 128,80 Z" fill="#1E5FAD" />
-          <path d="M 149,80 A 11,11 0 0 1 171,80 Z" fill="#1E5FAD" />
-          
-          <ellipse cx="50" cy="74" rx="4" ry="2" fill="#FDFCF8" opacity="0.4" />
-          <ellipse cx="105" cy="72" rx="5" ry="2.5" fill="#FDFCF8" opacity="0.4" />
-          <ellipse cx="156" cy="75" rx="3" ry="1.5" fill="#FDFCF8" opacity="0.4" />
-          <text x={W / 2} y="20" fontSize="8" fill="#6b7280" textAnchor="middle" fontFamily="monospace">Metal NPs on oxide support</text>
-        </svg>
-      );
-
-    case 'oxideSurface':
-      return (
-        <svg {...common} xmlns="http://www.w3.org/2000/svg">
-        
-          {[0, 1, 2, 3].map(row =>
-            [0, 1, 2, 3, 4, 5, 6, 7].map(col => {
-              const cx = 20 + col * 22;
-              const cy = 25 + row * 20;
-              const isMetal = (row + col) % 2 === 0;
-              const hasVacancy = (row === 1 && col === 4) || (row === 2 && col === 2);
-              if (hasVacancy) {
-                return (
-                  <g key={`${row}-${col}`}>
-                    <circle cx={cx} cy={cy} r="6" fill="none" stroke="#dc2626" strokeWidth="1.2" strokeDasharray="2,2" />
-                    <text x={cx} y={cy + 2} fontSize="6" fill="#dc2626" textAnchor="middle" fontFamily="monospace" fontWeight="600">Vo</text>
-                  </g>
-                );
-              }
-              return (
-                <circle
-                  key={`${row}-${col}`}
-                  cx={cx}
-                  cy={cy}
-                  r={isMetal ? 6 : 4}
-                  fill={isMetal ? '#1E5FAD' : '#dc7f46'}
-                  opacity={isMetal ? 0.85 : 0.7}
-                />
-              );
-            })
-          )}
-          <text x={W / 2} y={H - 6} fontSize="8" fill="#6b7280" textAnchor="middle" fontFamily="monospace">M–O lattice with O-vacancies</text>
-        </svg>
-      );
-
-    default:
-      return (
-        <svg {...common} xmlns="http://www.w3.org/2000/svg">
-          <rect x="20" y="30" width={W - 40} height="50" fill="#9ca3af" opacity="0.2" rx="4" />
-          <text x={W / 2} y={H / 2 + 4} fontSize="11" fill="#6b7280" textAnchor="middle" fontFamily="monospace">Heterogeneous catalyst</text>
-        </svg>
-      );
-  }
 }
